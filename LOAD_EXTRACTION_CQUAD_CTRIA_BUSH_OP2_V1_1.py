@@ -5,8 +5,59 @@ import os
 import numpy as np
 import tkinter as tk
 import time
+import math
 from tkinter import filedialog, StringVar, messagebox
 from pyNastran.op2.data_in_material_coord import data_in_material_coord
+
+METRICS = [
+    {"id": "M01", "fn": lambda fx,fy,fz: fz},
+    {"id": "M02", "fn": lambda fx,fy,fz: -fz},
+    {"id": "M03", "fn": lambda fx,fy,fz: fy},
+    {"id": "M04", "fn": lambda fx,fy,fz: -fy},
+    {"id": "M05", "fn": lambda fx,fy,fz: fx},
+    {"id": "M06", "fn": lambda fx,fy,fz: -fx},
+    {"id": "M07", "fn": lambda fx,fy,fz: abs(fx)},
+    {"id": "M08", "fn": lambda fx,fy,fz: math.sqrt(fy**2+fz**2)},
+    {"id": "M09", "fn": lambda fx,fy,fz: math.sqrt(fz**2+fy**2)},
+    {"id": "M10", "fn": lambda fx,fy,fz: math.sqrt(fz**2+fy**2)+abs(fx)},
+    {"id": "M11", "fn": lambda fx,fy,fz: math.sqrt((2*fz)**2+fy**2)},
+    {"id": "M12", "fn": lambda fx,fy,fz: math.sqrt(fz**2+(2*fy)**2)},
+    {"id": "M13", "fn": lambda fx,fy,fz: math.sqrt((2*fz)**2+fy**2)+abs(fx)},
+    {"id": "M14", "fn": lambda fx,fy,fz: math.sqrt(fz**2+(2*fy)**2)+abs(fx)},
+    {"id": "M15", "fn": lambda fx,fy,fz: abs(fx)+math.sqrt(fy**2+fz**2)},
+    {"id": "M16", "fn": lambda fx,fy,fz: fx+math.sqrt(fy**2+fz**2)},
+    {"id": "M17", "fn": lambda fx,fy,fz: math.sqrt((2*fx)**2+fy**2+fz**2)},
+    {"id": "M18", "fn": lambda fx,fy,fz: math.sqrt(fx**2+(2*fy)**2+(2*fz)**2)},
+    {"id": "M19", "fn": lambda fx,fy,fz: math.sqrt(fx**2+fy**2+fz**2)},
+]
+
+def extract_critical_rows(raw_data):
+    enriched = {}
+    eid_lcs  = {}
+    for row in raw_data:
+        eid = row["Element ID"]
+        lc  = row["Load Case ID"]
+        key = (eid, lc)
+        if key in enriched:
+            continue
+        try:
+            fx, fy, fz = float(row["FX"]), float(row["FY"]), float(row["FZ"])
+        except (ValueError, TypeError):
+            fx = fy = fz = 0.0
+        vals = {m["id"]: m["fn"](fx, fy, fz) for m in METRICS}
+        r = {**row, "_fx": fx, "_fy": fy, "_fz": fz, "_vals": vals, "_metrics": set()}
+        enriched[key] = r
+        eid_lcs.setdefault(eid, []).append(r)
+
+    for eid, rows in eid_lcs.items():
+        for m in METRICS:
+            mid = m["id"]
+            best = max(rows, key=lambda r, mid=mid: r["_vals"][mid])
+            best["_metrics"].add(mid)
+
+    result = [r for r in enriched.values() if r["_metrics"]]
+    result.sort(key=lambda r: (r["Element ID"], r["Load Case ID"]))
+    return result
 
 master=tk.Tk()
 master.title('LOAD EXTRACTION TOOL')
@@ -314,33 +365,46 @@ def asc_run():
         if not bush_entry_now:
             print("CSV nonselected for BUSH element")
             return
-        
-        df_bush =pd.read_csv(bush_entry_now)
+
+        df_bush = pd.read_csv(bush_entry_now)
         bush_element_ids = df_bush['Element ID'].tolist()
-        
+
         op2 = OP2()
         op2.read_op2(output_entry_now)
-        
+
         bush_forces_data = []
         for load_case_id, element_forces in op2.cbush_force.items():
             element_ids = element_forces.element
             forces_data = element_forces.data[0]
             load_ids = element_forces.loadIDs[0]
-            
+
             for i, element_id in enumerate(element_ids):
                 if element_id in bush_element_ids:
                     index = np.where(element_ids == element_id)[0][0]
                     forces = forces_data[index][:3]
                     bush_forces_data.append({
-                        'Element ID':element_id,
+                        'Element ID': element_id,
                         'Load Case ID': load_ids,
-                        'Fx':forces[0],
-                        'Fy':forces[1],
-                        'Fz':forces[2]
+                        'FX': forces[0],
+                        'FY': forces[1],
+                        'FZ': forces[2]
                     })
-        df_bush_froces = pd.DataFrame(bush_forces_data)
-        output_csv_bush = os.path.join(stress_entry_now2,'Bush_Load.csv')
-        df_bush_froces.to_csv(output_csv_bush, index=False)    
+
+        df_bush_raw = pd.DataFrame(bush_forces_data)
+        output_csv_bush_raw = os.path.join(stress_entry_now2, 'Bush_Load_Raw.csv')
+        df_bush_raw.to_csv(output_csv_bush_raw, index=False)
+
+        critical_rows = extract_critical_rows(bush_forces_data)
+        reduced_data = [{
+            'Element ID':    r['Element ID'],
+            'Load Case ID':  r['Load Case ID'],
+            'FX':            r['_fx'],
+            'FY':            r['_fy'],
+            'FZ':            r['_fz'],
+        } for r in critical_rows]
+        df_bush_reduced = pd.DataFrame(reduced_data)
+        output_csv_bush_reduced = os.path.join(stress_entry_now2, 'Bush_Load_Reduced.csv')
+        df_bush_reduced.to_csv(output_csv_bush_reduced, index=False)
         
     end_time =time.time()
     elapsed_time = end_time - start_time
