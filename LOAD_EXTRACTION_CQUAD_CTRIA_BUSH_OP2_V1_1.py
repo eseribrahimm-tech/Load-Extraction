@@ -51,6 +51,16 @@ PSHELL_METRICS = [
     {"id": "M16", "fn": lambda nx,ny,nxy: nx + nxy},
 ]
 
+def parse_id_input(input_str, all_ids=None):
+    input_str = input_str.strip().upper()
+    if input_str == "ALL":
+        return all_ids if all_ids else []
+    try:
+        ids = [int(x.strip()) for x in input_str.split(',') if x.strip()]
+        return ids
+    except ValueError:
+        return []
+
 def extract_critical_pshell(raw_data, group_key, nx_key, ny_key, nxy_key):
     enriched  = {}
     group_lcs = {}
@@ -125,177 +135,141 @@ class TextHandler(logging.Handler):
 logger = logging.getLogger('LoadExtraction')
 logger.setLevel(logging.INFO)
 
-master=tk.Tk()
-master.title('LOAD EXTRACTION TOOL')
-master.geometry("900x700")
- 
 input_entry_now = ""
 output_entry_now = ""
 stress_output_now = ""
 stress_output_now2 = ""
-bush_entry_now = ""
-extraction_type = StringVar()
-coordinate_system = StringVar()
+pshell_property_ids = ""
+bush_element_ids = ""
+extraction_type = StringVar(value="PSHELL ALL AVERAGE")
+coordinate_system = StringVar(value="Element CID")
 
-top_frame = tk.Frame(master)
-top_frame.pack(pady=10)
-bottom_frame = tk.Frame(master)
-bottom_frame.pack(pady=10)
+COLORS = {
+    'dark_bg': '#1e1e2e',
+    'card_bg': '#2d2d44',
+    'accent': '#4a9eff',
+    'accent_dark': '#2e6bb8',
+    'text': '#e0e0e0',
+    'text_light': '#a0a0a0',
+    'success': '#4caf50',
+    'error': '#f44336',
+    'warning': '#ff9800'
+}
 
-option_label = tk.Label(bottom_frame, text="Select Extraction Type:")
-option_label.pack(pady=5)
-option_menu = tk.OptionMenu(bottom_frame, extraction_type, "PSHELL ALL AVERAGE", "BUSH LOAD")
-option_menu.pack(pady=5)
+master = tk.Tk()
+master.title('Load Extraction Tool')
+master.geometry("1200x800")
+master.configure(bg=COLORS['dark_bg'])
+master.minsize(1000, 700)
+
+def create_title_frame(parent):
+    frame = tk.Frame(parent, bg=COLORS['accent'], height=80)
+    frame.pack(fill="x", padx=0, pady=0)
+    frame.pack_propagate(False)
+
+    title = tk.Label(frame, text="⚙  LOAD EXTRACTION TOOL",
+                     font=("Segoe UI", 24, "bold"),
+                     bg=COLORS['accent'], fg="white")
+    title.pack(pady=15)
+    subtitle = tk.Label(frame, text="Extract and analyze FEA loads from Nastran OP2 files",
+                        font=("Segoe UI", 10),
+                        bg=COLORS['accent'], fg="white", alpha=0.8)
+    subtitle.pack()
+    return frame
+
+def create_card(parent, title, bg=None):
+    bg = bg or COLORS['card_bg']
+    card = tk.Frame(parent, bg=bg, relief="flat", borderwidth=0)
+    card.configure(highlightbackground=COLORS['accent'], highlightthickness=1)
+
+    header = tk.Label(card, text=title, font=("Segoe UI", 11, "bold"),
+                     bg=bg, fg=COLORS['accent'])
+    header.pack(anchor="w", padx=15, pady=(10, 5))
+
+    return card
+
+def create_file_selector(parent, label_text, button_cmd):
+    frame = tk.Frame(parent, bg=COLORS['card_bg'])
+    frame.pack(fill="x", padx=0, pady=(0, 10))
+
+    label = tk.Label(frame, text=label_text, font=("Segoe UI", 10),
+                    bg=COLORS['card_bg'], fg=COLORS['text'])
+    label.pack(anchor="w", padx=15, pady=(10, 5))
+
+    file_frame = tk.Frame(frame, bg=COLORS['card_bg'])
+    file_frame.pack(fill="x", padx=15, pady=(0, 10))
+
+    entry = tk.Entry(file_frame, font=("Courier", 9),
+                    bg="#3a3a4a", fg=COLORS['text_light'],
+                    insertbackground=COLORS['accent'],
+                    relief="flat", bd=0, padx=10, pady=8)
+    entry.pack(side="left", fill="both", expand=True)
+
+    btn = tk.Button(file_frame, text="📂 Browse", command=button_cmd,
+                   bg=COLORS['accent'], fg="white", relief="flat",
+                   font=("Segoe UI", 9, "bold"), cursor="hand2",
+                   padx=15, pady=5)
+    btn.pack(side="right", padx=(10, 0), ipady=2)
+
+    return entry, btn, frame
+
+def create_option_selector(parent, label_text, options):
+    frame = tk.Frame(parent, bg=COLORS['card_bg'])
+    frame.pack(fill="x", padx=0, pady=(0, 10))
+
+    label = tk.Label(frame, text=label_text, font=("Segoe UI", 10),
+                    bg=COLORS['card_bg'], fg=COLORS['text'])
+    label.pack(anchor="w", padx=15, pady=(10, 5))
+
+    var = StringVar()
+
+    options_frame = tk.Frame(frame, bg=COLORS['card_bg'])
+    options_frame.pack(fill="x", padx=15, pady=(0, 10))
+
+    for opt in options:
+        rb = tk.Radiobutton(options_frame, text=opt, variable=var, value=opt,
+                          bg=COLORS['card_bg'], fg=COLORS['text'],
+                          selectcolor=COLORS['accent'], activebackground=COLORS['card_bg'],
+                          font=("Segoe UI", 10), cursor="hand2")
+        rb.pack(anchor="w", padx=10, pady=3)
+
+    var.set(options[0])
+    return var
 
 def bdf_input():
-    
     global input_entry_now
-    bdf_path=tk.filedialog.askopenfilename(title="Selecet a BDF file", filetypes=(("BDF File","*.bdf"),))
+    bdf_path=tk.filedialog.askopenfilename(title="Select a BDF file", filetypes=(("BDF File","*.bdf"),))
     if not bdf_path:
-        print("BDF file nonselected")
         return
+    input_entry_now = bdf_path
     input_entry.delete(0, tk.END)
-    input_entry.insert(0, bdf_path)
-    input_entry_now=input_entry.get()
+    input_entry.insert(0, f"✓ {os.path.basename(bdf_path)}")
 
 def op2_input():
-    
     global output_entry_now
-    op2_path=tk.filedialog.askopenfilename(title="Selecet a OP2 file", filetypes=(("OP2 File","*.op2"),))
+    op2_path=tk.filedialog.askopenfilename(title="Select a OP2 file", filetypes=(("OP2 File","*.op2"),))
     if not op2_path:
-        print("OP2 file nonselected")
         return
+    output_entry_now = op2_path
     output_entry.delete(0, tk.END)
-    output_entry.insert(0, op2_path)
-    output_entry_now=output_entry.get()
-    
-def csv_input():
-    
-    global stress_entry_now
-    csv_path=tk.filedialog.askopenfilename(title="Selecet a CSV file", filetypes=(("CSV File","*.csv"),))
-    if not csv_path:
-        print("CSV file nonselected")
-        return
-    stress_output_entry.delete(0, tk.END)
-    stress_output_entry.insert(0, csv_path)
-    stress_entry_now=stress_output_entry.get()
-    
-def bush_input():
-    
-    global bush_entry_now
-    bush_path=tk.filedialog.askopenfilename(title="Selecet a CSV file", filetypes=(("CSV File","*.csv"),))
-    if not bush_path:
-        print("BUSH CSV file nonselected")
-        return
-    bush_output_entry.delete(0, tk.END)
-    bush_output_entry.insert(0, bush_path)
-    bush_entry_now = bush_output_entry.get()
-    
+    output_entry.insert(0, f"✓ {os.path.basename(op2_path)}")
+
+def update_pshell_ids(*args):
+    global pshell_property_ids
+    pshell_property_ids = property_id_entry.get().strip()
+
+def update_bush_ids(*args):
+    global bush_element_ids
+    bush_element_ids = element_id_entry.get().strip()
+
 def output_location():
-        
-    global stress_entry_now2
-    Load_extraction_output=tk.filedialog.askdirectory()
-    if not Load_extraction_output:
-        print("OUTPUT file nonselected")
+    global stress_output_now2
+    output_path=tk.filedialog.askdirectory(title="Select output directory")
+    if not output_path:
         return
-    stress_output_entry2.delete(0,tk.END)
-    stress_output_entry2.insert(0,Load_extraction_output)
-    stress_entry_now2=stress_output_entry2.get()
-    
-def show_info_ALL_AVERAGE():
-    info_text_ALL_AVERAGE.insert(tk.END, """ALL AVERAGE TOOL;
-    The extracted loads are determined according to the Element&Material CID.
-    The properties you want extract should be grouped under the 'Property ID' header in the CSV.
-    """)
-    
-def show_info_BUSH():
-    info_text_BUSH.insert(tk.END, """BUSH TOOL;
-      The elements you want extract should be grouped under the 'Element ID' header in the CSV.""")
-
-def update_inputs_visibility(*args):   
-    
-    extraction = extraction_type.get()
-    
-    coordinate_label.pack_forget()
-    coordinate_dropdown.pack_forget()
-    
-    bdf_path.pack_forget()
-    input_entry.pack_forget()
-    browse1.pack_forget()
-
-    op2_path.pack_forget()
-    output_entry.pack_forget()
-    browse2.pack_forget()
-    
-    Load_extraction_output.pack_forget()
-    stress_output_entry2.pack_forget()
-    browse5.pack_forget()
-    
-    csv_path.pack_forget()
-    stress_output_entry.pack_forget()
-    browse3.pack_forget()
-    
-    bush_path.pack_forget()
-    bush_output_entry.pack_forget()
-    browse4.pack_forget()
-
-    begin_button.pack_forget()
-    
-    info_text_ALL_AVERAGE.pack_forget()
-    
-    info_text_BUSH.pack_forget()
-    
-    if extraction == "PSHELL ALL AVERAGE":
-        
-        coordinate_label.pack(pady=5)
-        coordinate_dropdown.pack(pady=5)
-        
-        bdf_path.pack(pady=5)
-        input_entry.pack(pady=5)
-        browse1.pack(pady=5)
-        
-        op2_path.pack(pady=5)
-        output_entry.pack(pady=5)
-        browse2.pack(pady=5)
-        
-        csv_path.pack(pady=5)
-        stress_output_entry.pack(pady=5)
-        browse3.pack(pady=5)
-        
-        Load_extraction_output.pack(pady=5)
-        stress_output_entry2.pack(pady=5)
-        browse5.pack(pady=5)
-        
-        begin_button.pack(pady=10,fill=tk.X)
-        
-        info_text_ALL_AVERAGE.pack(pady=10)
-        show_info_ALL_AVERAGE()
-        master.geometry("")
-         
-    elif  extraction == "BUSH LOAD":
-        
-        bdf_path.pack(pady=5)
-        input_entry.pack(pady=5)
-        browse1.pack(pady=5)
-        
-        op2_path.pack(pady=5)
-        output_entry.pack(pady=5)
-        browse2.pack(pady=5)
-        
-        bush_path.pack(pady=5)
-        bush_output_entry.pack(pady=5)
-        browse4.pack(pady=5)
-        
-        Load_extraction_output.pack(pady=5)
-        stress_output_entry2.pack(pady=5)
-        browse5.pack(pady=5)
-        
-        begin_button.pack(pady=10,fill=tk.X)
-        
-        info_text_BUSH.pack(pady=10)
-        
-        show_info_BUSH()
-        master.geometry("")
+    stress_output_now2 = output_path
+    stress_output_entry2.delete(0, tk.END)
+    stress_output_entry2.insert(0, f"✓ {os.path.basename(output_path)}")
 
 def asc_run():
     log_text.config(state=tk.NORMAL)
@@ -324,15 +298,10 @@ def asc_run():
     elapsed_time = 0
     
     if extraction_type.get() == "PSHELL ALL AVERAGE":
-        if not stress_entry_now:
-            logger.error("CSV dosyası seçilmedi!")
-            messagebox.showerror("Hata", "CSV dosyası seçilmedi (ALL AVERAGE)")
+        if not pshell_property_ids:
+            logger.error("Property ID'leri girin!")
+            messagebox.showerror("Hata", "Property ID'leri girin (tüm için: ALL veya 123,456,789)")
             return
-
-        logger.info("📂 CSV dosyası okunuyor...")
-        df_properties = pd.read_csv(stress_entry_now)
-        target_property_ids = df_properties['Property ID'].tolist()
-        logger.info(f"✓ {len(target_property_ids)} property ID bulundu")
 
         logger.info("📂 OP2 ve BDF dosyaları okunuyor...")
         op2 = OP2 ()
@@ -341,6 +310,14 @@ def asc_run():
         logger.info("✓ OP2 dosyası okundu")
         bdf.read_bdf(input_entry_now, encoding='latin1')
         logger.info("✓ BDF dosyası okundu")
+
+        logger.info("🔍 Property ID'leri parse ediliyor...")
+        all_pids = set([elem.pid for elem in bdf.elements.values()
+                       if elem.type in ("CQUAD4", "CTRIA3")])
+        target_property_ids = parse_id_input(pshell_property_ids, list(all_pids))
+        if not target_property_ids:
+            target_property_ids = list(all_pids)
+        logger.info(f"✓ {len(target_property_ids)} property ID seçildi")
 
         elements_with_properties = {
             element_id: element.pid
@@ -490,20 +467,26 @@ def asc_run():
         
         
     elif extraction_type.get() == "BUSH LOAD":
-        if not bush_entry_now:
-            logger.error("Bush CSV dosyası seçilmedi!")
-            messagebox.showerror("Hata", "Bush CSV dosyası seçilmedi")
+        if not bush_element_ids:
+            logger.error("Element ID'leri girin!")
+            messagebox.showerror("Hata", "Element ID'leri girin (tüm için: ALL veya 452,678,890)")
             return
-
-        logger.info("📂 Bush CSV dosyası okunuyor...")
-        df_bush = pd.read_csv(bush_entry_now)
-        bush_element_ids = df_bush['Element ID'].tolist()
-        logger.info(f"✓ {len(bush_element_ids)} bush element ID bulundu")
 
         logger.info("📂 OP2 dosyası okunuyor...")
         op2 = OP2()
         op2.read_op2(output_entry_now)
         logger.info("✓ OP2 dosyası okundu")
+
+        logger.info("🔍 Element ID'leri parse ediliyor...")
+        all_eids = []
+        for load_case_id, element_forces in op2.cbush_force.items():
+            all_eids.extend(element_forces.element)
+        all_eids = list(set(all_eids))
+
+        selected_element_ids = parse_id_input(bush_element_ids, all_eids)
+        if not selected_element_ids:
+            selected_element_ids = all_eids
+        logger.info(f"✓ {len(selected_element_ids)} element ID seçildi")
 
         logger.info("🔄 Bush force verileri çıkarılıyor...")
         bush_forces_data = []
@@ -513,7 +496,7 @@ def asc_run():
             load_ids = element_forces.loadIDs[0]
 
             for i, element_id in enumerate(element_ids):
-                if element_id in bush_element_ids:
+                if element_id in selected_element_ids:
                     index = np.where(element_ids == element_id)[0][0]
                     forces = forces_data[index][:3]
                     bush_forces_data.append({
@@ -552,50 +535,120 @@ def asc_run():
     messagebox.showinfo("Başarılı", f"İşlem Tamamlandı\nSüre: {elapsed_time:.2f} saniye\nKlasör: {stress_entry_now2}")
         
 
-top_frame = tk.Frame(master)
-top_frame.pack(pady=10)
-bottom_frame = tk.Frame(master)
-bottom_frame.pack(pady=10)
+create_title_frame(master)
 
+main_frame = tk.Frame(master, bg=COLORS['dark_bg'])
+main_frame.pack(fill="both", expand=True, padx=15, pady=15)
 
-extraction_type.trace("w", update_inputs_visibility)
+mode_frame = tk.Frame(main_frame, bg=COLORS['dark_bg'])
+mode_frame.pack(fill="x", padx=0, pady=(0, 20))
+tk.Label(mode_frame, text="📌 Select Mode:", font=("Segoe UI", 12, "bold"),
+         bg=COLORS['dark_bg'], fg=COLORS['accent']).pack(anchor="w")
 
-coordinate_label = tk.Label(top_frame, text="Select Coordinate System:")
-coordinate_dropdown = tk.OptionMenu(top_frame, coordinate_system, "Element CID", "Material CID")
+mode_inner = tk.Frame(mode_frame, bg=COLORS['dark_bg'])
+mode_inner.pack(fill="x", pady=(10, 0))
 
-bdf_path=tk.Label(top_frame, text="BDF File Location:")
-input_entry=tk.Entry(top_frame,text="",width=60)
-browse1=tk.Button(top_frame, text='Browse',command=bdf_input)
+for mode in ["PSHELL ALL AVERAGE", "BUSH LOAD"]:
+    tk.Radiobutton(mode_inner, text=f"  {mode}", variable=extraction_type, value=mode,
+                  bg=COLORS['dark_bg'], fg=COLORS['text'], selectcolor=COLORS['accent'],
+                  activebackground=COLORS['dark_bg'], font=("Segoe UI", 10),
+                  cursor="hand2", command=on_mode_change).pack(anchor="w", padx=20, pady=5)
 
-op2_path=tk.Label(bottom_frame, text="OP2 File Location:")
-output_entry=tk.Entry(bottom_frame,text="",width=60)
-browse2=tk.Button(bottom_frame, text='Browse',command=op2_input)
+scroll = tk.Canvas(main_frame, bg=COLORS['dark_bg'], highlightthickness=0)
+scroll.pack(fill="both", expand=True)
+scrollbar = tk.Scrollbar(main_frame, orient="vertical", command=scroll.yview)
+scrollbar.pack(side="right", fill="y")
+scroll.configure(yscrollcommand=scrollbar.set)
 
-csv_path=tk.Label(bottom_frame, text="Shell Property CSV File:")
-stress_output_entry=tk.Entry(bottom_frame,text="",width=60)
-browse3=tk.Button(bottom_frame, text='Browse',command=csv_input)
+content_frame = tk.Frame(scroll, bg=COLORS['dark_bg'])
+scroll.create_window((0, 0), window=content_frame, anchor="nw")
 
-bush_path=tk.Label(bottom_frame, text="BUSH CSV File Location:")
-bush_output_entry=tk.Entry(bottom_frame,text="",width=60)
-browse4=tk.Button(bottom_frame, text='Browse',command=bush_input)
+pshell_frame = tk.Frame(content_frame, bg=COLORS['dark_bg'])
+bush_frame = tk.Frame(content_frame, bg=COLORS['dark_bg'])
 
-Load_extraction_output=tk.Label(bottom_frame, text="Output File Excel Location:")
-stress_output_entry2=tk.Entry(bottom_frame,text="",width=60)
-browse5=tk.Button(bottom_frame, text='Browse',command=output_location)
+pshell_card = create_card(pshell_frame, "⚙  PSHELL ALL AVERAGE")
+pshell_card.pack(fill="x", padx=0, pady=(0, 15))
 
-begin_button=tk.Button(bottom_frame, text='Run Script',command=asc_run)
+input_entry, _, _ = create_file_selector(pshell_card, "📄 BDF File", bdf_input)
+output_entry, _, _ = create_file_selector(pshell_card, "📊 OP2 File", op2_input)
 
+prop_label = tk.Label(pshell_card, text="📋 Property IDs", font=("Segoe UI", 10),
+                     bg=COLORS['card_bg'], fg=COLORS['text'])
+prop_label.pack(anchor="w", padx=15, pady=(10, 5))
+property_id_entry = tk.Entry(pshell_card, font=("Segoe UI", 10),
+                            bg="#3a3a4a", fg=COLORS['text'],
+                            insertbackground=COLORS['accent'],
+                            relief="flat", bd=0, padx=10, pady=8)
+property_id_entry.pack(fill="x", padx=15, pady=(0, 5))
+property_id_entry.insert(0, "ALL  (or: 123,456,789)")
+property_id_entry.bind("<KeyRelease>", update_pshell_ids)
+tk.Label(pshell_card, text="Enter ALL for all properties or comma-separated IDs",
+         font=("Segoe UI", 8), bg=COLORS['card_bg'], fg=COLORS['text_light']).pack(anchor="w", padx=15, pady=(0, 10))
 
-info_text_ALL_AVERAGE = tk.Text(master, height=10, width=70)
+coord_frame = create_card(pshell_card, "🔄 Coordinate System")
+coord_frame.pack(fill="x", padx=0, pady=(0, 10))
+for opt in ["Element CID", "Material CID"]:
+    tk.Radiobutton(coord_frame, text=opt, variable=coordinate_system, value=opt,
+                  bg=COLORS['card_bg'], fg=COLORS['text'], selectcolor=COLORS['accent'],
+                  activebackground=COLORS['card_bg'], font=("Segoe UI", 10),
+                  cursor="hand2").pack(anchor="w", padx=20, pady=5)
 
-info_text_BUSH = tk.Text(master, height=10, width=50)
+stress_output_entry2, _, _ = create_file_selector(pshell_card, "📁 Output Directory", output_location)
 
-log_frame = tk.Frame(master, bg="#f0f0f0", height=150)
-log_frame.pack(fill="both", expand=False, padx=10, pady=5)
-log_label = tk.Label(log_frame, text="📋 İşlem Günlüğü:", bg="#f0f0f0", font=("Courier", 9, "bold"))
-log_label.pack(anchor="w", padx=5, pady=(5, 2))
-log_text = scrolledtext.ScrolledText(log_frame, height=7, width=110, font=("Courier", 8), bg="white", fg="black")
-log_text.pack(fill="both", expand=True, padx=5, pady=5)
+bush_card = create_card(bush_frame, "⚙  BUSH LOAD")
+bush_card.pack(fill="x", padx=0, pady=(0, 15))
+
+input_entry2, _, _ = create_file_selector(bush_card, "📄 BDF File", bdf_input)
+output_entry2, _, _ = create_file_selector(bush_card, "📊 OP2 File", op2_input)
+
+elem_label = tk.Label(bush_card, text="🔧 Element IDs", font=("Segoe UI", 10),
+                     bg=COLORS['card_bg'], fg=COLORS['text'])
+elem_label.pack(anchor="w", padx=15, pady=(10, 5))
+element_id_entry = tk.Entry(bush_card, font=("Segoe UI", 10),
+                           bg="#3a3a4a", fg=COLORS['text'],
+                           insertbackground=COLORS['accent'],
+                           relief="flat", bd=0, padx=10, pady=8)
+element_id_entry.pack(fill="x", padx=15, pady=(0, 5))
+element_id_entry.insert(0, "ALL  (or: 452,678,890)")
+element_id_entry.bind("<KeyRelease>", update_bush_ids)
+tk.Label(bush_card, text="Enter ALL for all elements or comma-separated IDs",
+         font=("Segoe UI", 8), bg=COLORS['card_bg'], fg=COLORS['text_light']).pack(anchor="w", padx=15, pady=(0, 10))
+
+stress_output_entry3, _, _ = create_file_selector(bush_card, "📁 Output Directory", output_location)
+
+pshell_frame.pack(fill="x")
+
+content_frame.update_idletasks()
+scroll.configure(scrollregion=scroll.bbox("all"))
+
+def on_mode_change():
+    pshell_frame.pack_forget()
+    bush_frame.pack_forget()
+    if extraction_type.get() == "PSHELL ALL AVERAGE":
+        pshell_frame.pack(fill="x")
+    else:
+        bush_frame.pack(fill="x")
+    content_frame.update_idletasks()
+    scroll.configure(scrollregion=scroll.bbox("all"))
+
+log_frame = tk.Frame(master, bg=COLORS['card_bg'], height=140)
+log_frame.pack(fill="both", expand=False, padx=15, pady=(0, 15))
+tk.Label(log_frame, text="📋 Process Log", font=("Segoe UI", 11, "bold"),
+         bg=COLORS['card_bg'], fg=COLORS['accent']).pack(anchor="w", padx=15, pady=(10, 5))
+log_text = scrolledtext.ScrolledText(log_frame, height=6, font=("Courier", 8),
+                                     bg="#1a1a2a", fg=COLORS['text_light'], insertbackground=COLORS['accent'])
+log_text.pack(fill="both", expand=True, padx=15, pady=(0, 10))
 log_text.config(state=tk.DISABLED)
+
+button_frame = tk.Frame(master, bg=COLORS['dark_bg'])
+button_frame.pack(fill="x", padx=15, pady=(0, 15))
+tk.Button(button_frame, text="▶  RUN ANALYSIS", command=asc_run,
+          bg=COLORS['success'], fg="white", font=("Segoe UI", 12, "bold"),
+          relief="flat", cursor="hand2", padx=30, pady=12).pack(side="left", expand=True, fill="both", padx=(0, 7))
+tk.Button(button_frame, text="⟳  CLEAR", command=lambda: log_text.config(state=tk.NORMAL) or log_text.delete(1.0, tk.END) or log_text.config(state=tk.DISABLED),
+          bg="#666", fg="white", font=("Segoe UI", 11, "bold"),
+          relief="flat", cursor="hand2", padx=20, pady=12).pack(side="left", expand=True, fill="both")
+
+on_mode_change()
 
 master.mainloop()
