@@ -228,14 +228,13 @@ class LoadExtractionApp:
         entry = tk.Entry(file_frame, font=("Courier", 9),
                         bg="#3a3a4a", fg=self.COLORS['text_light'],
                         insertbackground=self.COLORS['accent'],
-                        relief="flat", bd=0, padx=10, pady=8)
-        entry.pack(side="left", fill="both", expand=True)
+                        relief="flat", bd=0)
+        entry.pack(side="left", fill="both", expand=True, ipady=5)
 
         btn = tk.Button(file_frame, text="📂 Browse", command=button_cmd,
                        bg=self.COLORS['accent'], fg="white", relief="flat",
-                       font=("Segoe UI", 9, "bold"), cursor="hand2",
-                       padx=15, pady=5)
-        btn.pack(side="right", padx=(10, 0), ipady=2)
+                       font=("Segoe UI", 9, "bold"), cursor="hand2")
+        btn.pack(side="right", padx=(10, 0), ipady=5)
 
         return entry
 
@@ -284,8 +283,8 @@ class LoadExtractionApp:
         self.property_id_entry = tk.Entry(pshell_card, font=("Segoe UI", 10),
                                         bg="#3a3a4a", fg=self.COLORS['text'],
                                         insertbackground=self.COLORS['accent'],
-                                        relief="flat", bd=0, padx=10, pady=8)
-        self.property_id_entry.pack(fill="x", padx=15, pady=(0, 5))
+                                        relief="flat", bd=0)
+        self.property_id_entry.pack(fill="x", padx=15, pady=(0, 5), ipady=5)
         self.property_id_entry.insert(0, "ALL  (or: 123,456,789)")
         self.property_id_entry.bind("<KeyRelease>", lambda e: self.update_pshell_ids())
         tk.Label(pshell_card, text="Enter ALL for all properties or comma-separated IDs",
@@ -314,8 +313,8 @@ class LoadExtractionApp:
         self.element_id_entry = tk.Entry(bush_card, font=("Segoe UI", 10),
                                         bg="#3a3a4a", fg=self.COLORS['text'],
                                         insertbackground=self.COLORS['accent'],
-                                        relief="flat", bd=0, padx=10, pady=8)
-        self.element_id_entry.pack(fill="x", padx=15, pady=(0, 5))
+                                        relief="flat", bd=0)
+        self.element_id_entry.pack(fill="x", padx=15, pady=(0, 5), ipady=5)
         self.element_id_entry.insert(0, "ALL  (or: 452,678,890)")
         self.element_id_entry.bind("<KeyRelease>", lambda e: self.update_bush_ids())
         tk.Label(bush_card, text="Enter ALL for all elements or comma-separated IDs",
