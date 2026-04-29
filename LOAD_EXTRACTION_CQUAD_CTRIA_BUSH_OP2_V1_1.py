@@ -31,6 +31,55 @@ METRICS = [
     {"id": "M19", "fn": lambda fx,fy,fz: math.sqrt(fx**2+fy**2+fz**2)},
 ]
 
+PSHELL_METRICS = [
+    {"id": "M01", "fn": lambda nx,ny,nxy: nx},
+    {"id": "M02", "fn": lambda nx,ny,nxy: -nx},
+    {"id": "M03", "fn": lambda nx,ny,nxy: ny},
+    {"id": "M04", "fn": lambda nx,ny,nxy: -ny},
+    {"id": "M05", "fn": lambda nx,ny,nxy: nxy},
+    {"id": "M06", "fn": lambda nx,ny,nxy: -nxy},
+    {"id": "M07", "fn": lambda nx,ny,nxy: math.sqrt(nx**2 + ny**2)},
+    {"id": "M08", "fn": lambda nx,ny,nxy: math.sqrt(nx**2 + ny**2) + abs(nxy)},
+    {"id": "M09", "fn": lambda nx,ny,nxy: math.sqrt(2*nx**2 + 2*ny**2)},
+    {"id": "M10", "fn": lambda nx,ny,nxy: math.sqrt(nx**2 + 2*ny**2)},
+    {"id": "M11", "fn": lambda nx,ny,nxy: math.sqrt(2*nx**2 + ny**2) + 2*abs(nxy)},
+    {"id": "M12", "fn": lambda nx,ny,nxy: math.sqrt(nx**2 + 2*ny**2) + 2*abs(nxy)},
+    {"id": "M13", "fn": lambda nx,ny,nxy: nx + ny + nxy},
+    {"id": "M14", "fn": lambda nx,ny,nxy: nx + ny},
+    {"id": "M15", "fn": lambda nx,ny,nxy: ny + nxy},
+    {"id": "M16", "fn": lambda nx,ny,nxy: nx + nxy},
+]
+
+def extract_critical_pshell(raw_data, group_key, nx_key, ny_key, nxy_key):
+    enriched  = {}
+    group_lcs = {}
+    for row in raw_data:
+        gid = row[group_key]
+        lc  = row['Load Case ID']
+        key = (gid, lc)
+        if key in enriched:
+            continue
+        try:
+            nx  = float(row[nx_key])
+            ny  = float(row[ny_key])
+            nxy = float(row[nxy_key])
+        except (ValueError, TypeError):
+            nx = ny = nxy = 0.0
+        vals = {m["id"]: m["fn"](nx, ny, nxy) for m in PSHELL_METRICS}
+        r = {**row, "_nx": nx, "_ny": ny, "_nxy": nxy, "_vals": vals, "_metrics": set()}
+        enriched[key] = r
+        group_lcs.setdefault(gid, []).append(r)
+
+    for gid, rows in group_lcs.items():
+        for m in PSHELL_METRICS:
+            mid  = m["id"]
+            best = max(rows, key=lambda r, mid=mid: r["_vals"][mid])
+            best["_metrics"].add(mid)
+
+    result = [r for r in enriched.values() if r["_metrics"]]
+    result.sort(key=lambda r: (r[group_key], r['Load Case ID']))
+    return result
+
 def extract_critical_rows(raw_data):
     enriched = {}
     eid_lcs  = {}
@@ -356,7 +405,37 @@ def asc_run():
     
         df2 = pd.DataFrame(Average_forces)
         output_csv2 = os.path.join(stress_entry_now2, 'Average_Load.csv')
-        df2.to_csv(output_csv2, index=False)   
+        df2.to_csv(output_csv2, index=False)
+
+        critical_elem = extract_critical_pshell(
+            element_base_data, 'Element ID', 'Nx', 'Ny', 'Nxy')
+        reduced_elem = [{
+            'Property ID':  r['Property ID'],
+            'Element ID':   r['Element ID'],
+            'Load Case ID': r['Load Case ID'],
+            'Nx':           r['_nx'],
+            'Ny':           r['_ny'],
+            'Nxy':          r['_nxy'],
+            'Area':         r['Area'],
+        } for r in critical_elem]
+        df_elem_reduced = pd.DataFrame(reduced_elem)
+        output_csv_elem_reduced = os.path.join(stress_entry_now2, 'Element_Load_Reduced.csv')
+        df_elem_reduced.to_csv(output_csv_elem_reduced, index=False)
+
+        critical_avg = extract_critical_pshell(
+            Average_forces, 'Property ID', 'Average Nx', 'Average Ny', 'Average_Nxy')
+        reduced_avg = [{
+            'Property ID':  r['Property ID'],
+            'Load Case ID': r['Load Case ID'],
+            'Average Nx':   r['_nx'],
+            'Average Ny':   r['_ny'],
+            'Average_Nxy':  r['_nxy'],
+            'Average_Area': r['Average_Area'],
+        } for r in critical_avg]
+        df_avg_reduced = pd.DataFrame(reduced_avg)
+        output_csv_avg_reduced = os.path.join(stress_entry_now2, 'Average_Load_Reduced.csv')
+        df_avg_reduced.to_csv(output_csv_avg_reduced, index=False)
+
         end_time =time.time()
         elapsed_time = end_time - start_time
         
