@@ -51,6 +51,16 @@ PSHELL_METRICS = [
     {"id": "M16", "fn": lambda nx,ny,nxy: nx + nxy},
 ]
 
+def parse_id_input(input_str, all_ids=None):
+    input_str = input_str.strip().upper()
+    if input_str == "ALL":
+        return all_ids if all_ids else []
+    try:
+        ids = [int(x.strip()) for x in input_str.split(',') if x.strip()]
+        return ids
+    except ValueError:
+        return []
+
 def extract_critical_pshell(raw_data, group_key, nx_key, ny_key, nxy_key):
     enriched  = {}
     group_lcs = {}
@@ -129,7 +139,8 @@ input_entry_now = ""
 output_entry_now = ""
 stress_output_now = ""
 stress_output_now2 = ""
-bush_entry_now = ""
+pshell_property_ids = ""
+bush_element_ids = ""
 extraction_type = StringVar(value="PSHELL ALL AVERAGE")
 coordinate_system = StringVar(value="Element CID")
 
@@ -243,23 +254,13 @@ def op2_input():
     output_entry.delete(0, tk.END)
     output_entry.insert(0, f"✓ {os.path.basename(op2_path)}")
 
-def csv_input():
-    global stress_output_now
-    csv_path=tk.filedialog.askopenfilename(title="Select a CSV file", filetypes=(("CSV File","*.csv"),))
-    if not csv_path:
-        return
-    stress_output_now = csv_path
-    stress_output_entry.delete(0, tk.END)
-    stress_output_entry.insert(0, f"✓ {os.path.basename(csv_path)}")
+def update_pshell_ids(*args):
+    global pshell_property_ids
+    pshell_property_ids = property_id_entry.get().strip()
 
-def bush_input():
-    global bush_entry_now
-    bush_path=tk.filedialog.askopenfilename(title="Select a CSV file", filetypes=(("CSV File","*.csv"),))
-    if not bush_path:
-        return
-    bush_entry_now = bush_path
-    bush_output_entry.delete(0, tk.END)
-    bush_output_entry.insert(0, f"✓ {os.path.basename(bush_path)}")
+def update_bush_ids(*args):
+    global bush_element_ids
+    bush_element_ids = element_id_entry.get().strip()
 
 def output_location():
     global stress_output_now2
@@ -297,15 +298,10 @@ def asc_run():
     elapsed_time = 0
     
     if extraction_type.get() == "PSHELL ALL AVERAGE":
-        if not stress_entry_now:
-            logger.error("CSV dosyası seçilmedi!")
-            messagebox.showerror("Hata", "CSV dosyası seçilmedi (ALL AVERAGE)")
+        if not pshell_property_ids:
+            logger.error("Property ID'leri girin!")
+            messagebox.showerror("Hata", "Property ID'leri girin (tüm için: ALL veya 123,456,789)")
             return
-
-        logger.info("📂 CSV dosyası okunuyor...")
-        df_properties = pd.read_csv(stress_entry_now)
-        target_property_ids = df_properties['Property ID'].tolist()
-        logger.info(f"✓ {len(target_property_ids)} property ID bulundu")
 
         logger.info("📂 OP2 ve BDF dosyaları okunuyor...")
         op2 = OP2 ()
@@ -314,6 +310,14 @@ def asc_run():
         logger.info("✓ OP2 dosyası okundu")
         bdf.read_bdf(input_entry_now, encoding='latin1')
         logger.info("✓ BDF dosyası okundu")
+
+        logger.info("🔍 Property ID'leri parse ediliyor...")
+        all_pids = set([elem.pid for elem in bdf.elements.values()
+                       if elem.type in ("CQUAD4", "CTRIA3")])
+        target_property_ids = parse_id_input(pshell_property_ids, list(all_pids))
+        if not target_property_ids:
+            target_property_ids = list(all_pids)
+        logger.info(f"✓ {len(target_property_ids)} property ID seçildi")
 
         elements_with_properties = {
             element_id: element.pid
@@ -463,20 +467,26 @@ def asc_run():
         
         
     elif extraction_type.get() == "BUSH LOAD":
-        if not bush_entry_now:
-            logger.error("Bush CSV dosyası seçilmedi!")
-            messagebox.showerror("Hata", "Bush CSV dosyası seçilmedi")
+        if not bush_element_ids:
+            logger.error("Element ID'leri girin!")
+            messagebox.showerror("Hata", "Element ID'leri girin (tüm için: ALL veya 452,678,890)")
             return
-
-        logger.info("📂 Bush CSV dosyası okunuyor...")
-        df_bush = pd.read_csv(bush_entry_now)
-        bush_element_ids = df_bush['Element ID'].tolist()
-        logger.info(f"✓ {len(bush_element_ids)} bush element ID bulundu")
 
         logger.info("📂 OP2 dosyası okunuyor...")
         op2 = OP2()
         op2.read_op2(output_entry_now)
         logger.info("✓ OP2 dosyası okundu")
+
+        logger.info("🔍 Element ID'leri parse ediliyor...")
+        all_eids = []
+        for load_case_id, element_forces in op2.cbush_force.items():
+            all_eids.extend(element_forces.element)
+        all_eids = list(set(all_eids))
+
+        selected_element_ids = parse_id_input(bush_element_ids, all_eids)
+        if not selected_element_ids:
+            selected_element_ids = all_eids
+        logger.info(f"✓ {len(selected_element_ids)} element ID seçildi")
 
         logger.info("🔄 Bush force verileri çıkarılıyor...")
         bush_forces_data = []
@@ -486,7 +496,7 @@ def asc_run():
             load_ids = element_forces.loadIDs[0]
 
             for i, element_id in enumerate(element_ids):
-                if element_id in bush_element_ids:
+                if element_id in selected_element_ids:
                     index = np.where(element_ids == element_id)[0][0]
                     forces = forces_data[index][:3]
                     bush_forces_data.append({
@@ -561,7 +571,19 @@ pshell_card.pack(fill="x", padx=0, pady=(0, 15))
 
 input_entry, _, _ = create_file_selector(pshell_card, "📄 BDF File", bdf_input)
 output_entry, _, _ = create_file_selector(pshell_card, "📊 OP2 File", op2_input)
-stress_output_entry, _, _ = create_file_selector(pshell_card, "📋 Property CSV File", csv_input)
+
+prop_label = tk.Label(pshell_card, text="📋 Property IDs", font=("Segoe UI", 10),
+                     bg=COLORS['card_bg'], fg=COLORS['text'])
+prop_label.pack(anchor="w", padx=15, pady=(10, 5))
+property_id_entry = tk.Entry(pshell_card, font=("Segoe UI", 10),
+                            bg="#3a3a4a", fg=COLORS['text'],
+                            insertbackground=COLORS['accent'],
+                            relief="flat", bd=0, padx=10, pady=8)
+property_id_entry.pack(fill="x", padx=15, pady=(0, 5))
+property_id_entry.insert(0, "ALL  (or: 123,456,789)")
+property_id_entry.bind("<KeyRelease>", update_pshell_ids)
+tk.Label(pshell_card, text="Enter ALL for all properties or comma-separated IDs",
+         font=("Segoe UI", 8), bg=COLORS['card_bg'], fg=COLORS['text_light']).pack(anchor="w", padx=15, pady=(0, 10))
 
 coord_frame = create_card(pshell_card, "🔄 Coordinate System")
 coord_frame.pack(fill="x", padx=0, pady=(0, 10))
@@ -573,19 +595,26 @@ for opt in ["Element CID", "Material CID"]:
 
 stress_output_entry2, _, _ = create_file_selector(pshell_card, "📁 Output Directory", output_location)
 
-tk.Label(pshell_card, text="Property ID will be extracted from CSV",
-         font=("Segoe UI", 9), bg=COLORS['card_bg'], fg=COLORS['text_light']).pack(anchor="w", padx=15, pady=(0, 15))
-
 bush_card = create_card(bush_frame, "⚙  BUSH LOAD")
 bush_card.pack(fill="x", padx=0, pady=(0, 15))
 
 input_entry2, _, _ = create_file_selector(bush_card, "📄 BDF File", bdf_input)
 output_entry2, _, _ = create_file_selector(bush_card, "📊 OP2 File", op2_input)
-bush_output_entry, _, _ = create_file_selector(bush_card, "📋 BUSH CSV File", bush_input)
-stress_output_entry3, _, _ = create_file_selector(bush_card, "📁 Output Directory", output_location)
 
-tk.Label(bush_card, text="Element ID will be extracted from CSV",
-         font=("Segoe UI", 9), bg=COLORS['card_bg'], fg=COLORS['text_light']).pack(anchor="w", padx=15, pady=(0, 15))
+elem_label = tk.Label(bush_card, text="🔧 Element IDs", font=("Segoe UI", 10),
+                     bg=COLORS['card_bg'], fg=COLORS['text'])
+elem_label.pack(anchor="w", padx=15, pady=(10, 5))
+element_id_entry = tk.Entry(bush_card, font=("Segoe UI", 10),
+                           bg="#3a3a4a", fg=COLORS['text'],
+                           insertbackground=COLORS['accent'],
+                           relief="flat", bd=0, padx=10, pady=8)
+element_id_entry.pack(fill="x", padx=15, pady=(0, 5))
+element_id_entry.insert(0, "ALL  (or: 452,678,890)")
+element_id_entry.bind("<KeyRelease>", update_bush_ids)
+tk.Label(bush_card, text="Enter ALL for all elements or comma-separated IDs",
+         font=("Segoe UI", 8), bg=COLORS['card_bg'], fg=COLORS['text_light']).pack(anchor="w", padx=15, pady=(0, 10))
+
+stress_output_entry3, _, _ = create_file_selector(bush_card, "📁 Output Directory", output_location)
 
 pshell_frame.pack(fill="x")
 
