@@ -159,9 +159,9 @@ class LoadExtractionApp:
     def __init__(self, root):
         self.root = root
         self.root.title('Load Extraction Tool')
-        self.root.geometry("1200x800")
+        self.root.geometry("1400x700")
         self.root.configure(bg=self.COLORS['dark_bg'])
-        self.root.minsize(1000, 700)
+        self.root.minsize(1200, 600)
 
         self.logger = logging.getLogger('LoadExtraction')
         self.logger.setLevel(logging.INFO)
@@ -170,6 +170,7 @@ class LoadExtractionApp:
         self.output_entry_now = ""
         self.pshell_property_ids = ""
         self.bush_element_ids = ""
+        self.load_case_ids = ""
         self.stress_output_now2 = ""
 
         self.extraction_type = tk.StringVar(value="PSHELL ALL AVERAGE")
@@ -239,8 +240,10 @@ class LoadExtractionApp:
         return entry
 
     def build_ui(self):
+        # TITLE
         self.create_title_frame(self.root)
 
+        # MODE SELECTOR
         main_frame = tk.Frame(self.root, bg=self.COLORS['dark_bg'])
         main_frame.pack(fill="both", expand=True, padx=15, pady=15)
 
@@ -256,83 +259,151 @@ class LoadExtractionApp:
             tk.Radiobutton(mode_inner, text=f"  {mode}", variable=self.extraction_type, value=mode,
                           bg=self.COLORS['dark_bg'], fg=self.COLORS['text'], selectcolor=self.COLORS['accent'],
                           activebackground=self.COLORS['dark_bg'], font=("Segoe UI", 10),
-                          cursor="hand2", command=self.on_mode_change).pack(anchor="w", padx=20, pady=5)
+                          cursor="hand2", command=self.on_mode_change).pack(anchor="w", padx=20, pady=3)
 
-        scroll = tk.Canvas(main_frame, bg=self.COLORS['dark_bg'], highlightthickness=0)
-        scroll.pack(fill="both", expand=True)
-        scrollbar = tk.Scrollbar(main_frame, orient="vertical", command=scroll.yview)
-        scrollbar.pack(side="right", fill="y")
-        scroll.configure(yscrollcommand=scrollbar.set)
-
-        content_frame = tk.Frame(scroll, bg=self.COLORS['dark_bg'])
-        scroll.create_window((0, 0), window=content_frame, anchor="nw")
+        # CONTENT FRAME (NO SCROLLBARS)
+        content_frame = tk.Frame(main_frame, bg=self.COLORS['dark_bg'])
+        content_frame.pack(fill="both", expand=True)
 
         self.pshell_frame = tk.Frame(content_frame, bg=self.COLORS['dark_bg'])
         self.bush_frame = tk.Frame(content_frame, bg=self.COLORS['dark_bg'])
 
-        # PSHELL UI
-        pshell_card = self.create_card(self.pshell_frame, "⚙  PSHELL ALL AVERAGE")
-        pshell_card.pack(fill="x", padx=0, pady=(0, 15))
+        # ═════════════════════════════════════════════════════════════════
+        # PSHELL LAYOUT
+        # ═════════════════════════════════════════════════════════════════
+        pshell_content = tk.Frame(self.pshell_frame, bg=self.COLORS['dark_bg'])
+        pshell_content.pack(fill="both", expand=True)
 
-        self.input_entry = self.create_file_selector(pshell_card, "📄 BDF File", self.bdf_input)
-        self.output_entry = self.create_file_selector(pshell_card, "📊 OP2 File", self.op2_input)
+        # LEFT COLUMN
+        left_frame = tk.Frame(pshell_content, bg=self.COLORS['dark_bg'])
+        left_frame.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
-        prop_label = tk.Label(pshell_card, text="📋 Property IDs", font=("Segoe UI", 10),
-                             bg=self.COLORS['card_bg'], fg=self.COLORS['text'])
-        prop_label.pack(anchor="w", padx=15, pady=(10, 5))
-        self.property_id_entry = tk.Entry(pshell_card, font=("Segoe UI", 10),
+        left_card = self.create_card(left_frame, "📁  Files & Output")
+        left_card.pack(fill="x", padx=0, pady=(0, 15))
+        self.input_entry = self.create_file_selector(left_card, "📄 BDF File", self.bdf_input)
+        self.output_entry = self.create_file_selector(left_card, "📊 OP2 File", self.op2_input)
+        self.stress_output_entry2 = self.create_file_selector(left_card, "📁 Output Directory", self.output_location)
+
+        # RIGHT COLUMN
+        right_frame = tk.Frame(pshell_content, bg=self.COLORS['dark_bg'])
+        right_frame.pack(side="left", fill="both", expand=True)
+
+        # Property IDs
+        prop_label = tk.Label(right_frame, text="📋 Property IDs", font=("Segoe UI", 10, "bold"),
+                             bg=self.COLORS['dark_bg'], fg=self.COLORS['accent'])
+        prop_label.pack(anchor="w", padx=0, pady=(0, 5))
+        self.property_id_entry = tk.Entry(right_frame, font=("Segoe UI", 10),
                                         bg="#3a3a4a", fg=self.COLORS['text'],
                                         insertbackground=self.COLORS['accent'],
                                         relief="flat", bd=0)
-        self.property_id_entry.pack(fill="x", padx=15, pady=(0, 5), ipady=5)
-        self.property_id_entry.insert(0, "ALL  (or: 123,456,789)")
+        self.property_id_entry.pack(fill="x", padx=0, pady=(0, 3), ipady=5)
+        self.property_id_entry.insert(0, "ALL")
         self.property_id_entry.bind("<KeyRelease>", lambda e: self.update_pshell_ids())
-        tk.Label(pshell_card, text="Enter ALL for all properties or comma-separated IDs",
-                 font=("Segoe UI", 8), bg=self.COLORS['card_bg'], fg=self.COLORS['text_light']).pack(anchor="w", padx=15, pady=(0, 10))
+        tk.Label(right_frame, text="Enter ALL or 123,456,789",
+                 font=("Segoe UI", 8), bg=self.COLORS['dark_bg'], fg=self.COLORS['text_light']).pack(anchor="w", padx=0, pady=(0, 12))
 
-        coord_frame = self.create_card(pshell_card, "🔄 Coordinate System")
-        coord_frame.pack(fill="x", padx=0, pady=(0, 10))
+        # Element IDs
+        elem_label = tk.Label(right_frame, text="🔧 Element IDs", font=("Segoe UI", 10, "bold"),
+                             bg=self.COLORS['dark_bg'], fg=self.COLORS['accent'])
+        elem_label.pack(anchor="w", padx=0, pady=(0, 5))
+        self.element_id_entry = tk.Entry(right_frame, font=("Segoe UI", 10),
+                                        bg="#3a3a4a", fg=self.COLORS['text'],
+                                        insertbackground=self.COLORS['accent'],
+                                        relief="flat", bd=0)
+        self.element_id_entry.pack(fill="x", padx=0, pady=(0, 3), ipady=5)
+        self.element_id_entry.insert(0, "ALL")
+        self.element_id_entry.bind("<KeyRelease>", lambda e: self.update_bush_ids())
+        tk.Label(right_frame, text="Enter ALL or 452,678,890",
+                 font=("Segoe UI", 8), bg=self.COLORS['dark_bg'], fg=self.COLORS['text_light']).pack(anchor="w", padx=0, pady=(0, 12))
+
+        # Load Cases
+        lc_label = tk.Label(right_frame, text="⏱️  Load Cases", font=("Segoe UI", 10, "bold"),
+                           bg=self.COLORS['dark_bg'], fg=self.COLORS['accent'])
+        lc_label.pack(anchor="w", padx=0, pady=(0, 5))
+        self.loadcase_id_entry = tk.Entry(right_frame, font=("Segoe UI", 10),
+                                         bg="#3a3a4a", fg=self.COLORS['text'],
+                                         insertbackground=self.COLORS['accent'],
+                                         relief="flat", bd=0)
+        self.loadcase_id_entry.pack(fill="x", padx=0, pady=(0, 3), ipady=5)
+        self.loadcase_id_entry.insert(0, "ALL")
+        self.loadcase_id_entry.bind("<KeyRelease>", lambda e: self.update_load_cases())
+        tk.Label(right_frame, text="Enter ALL or 1,2,3",
+                 font=("Segoe UI", 8), bg=self.COLORS['dark_bg'], fg=self.COLORS['text_light']).pack(anchor="w", padx=0, pady=(0, 12))
+
+        # COORDINATE SYSTEM (PSHELL only)
+        coord_card = self.create_card(pshell_content, "🔄  Coordinate System")
+        coord_card.pack(fill="x", padx=0, pady=(15, 0))
         for opt in ["Element CID", "Material CID"]:
-            tk.Radiobutton(coord_frame, text=opt, variable=self.coordinate_system, value=opt,
+            tk.Radiobutton(coord_card, text=opt, variable=self.coordinate_system, value=opt,
                           bg=self.COLORS['card_bg'], fg=self.COLORS['text'], selectcolor=self.COLORS['accent'],
                           activebackground=self.COLORS['card_bg'], font=("Segoe UI", 10),
-                          cursor="hand2").pack(anchor="w", padx=20, pady=5)
+                          cursor="hand2").pack(anchor="w", padx=20, pady=3)
 
-        self.stress_output_entry2 = self.create_file_selector(pshell_card, "📁 Output Directory", self.output_location)
+        # ═════════════════════════════════════════════════════════════════
+        # BUSH LAYOUT
+        # ═════════════════════════════════════════════════════════════════
+        bush_content = tk.Frame(self.bush_frame, bg=self.COLORS['dark_bg'])
+        bush_content.pack(fill="both", expand=True)
 
-        # BUSH UI
-        bush_card = self.create_card(self.bush_frame, "⚙  BUSH LOAD")
-        bush_card.pack(fill="x", padx=0, pady=(0, 15))
+        bush_left = tk.Frame(bush_content, bg=self.COLORS['dark_bg'])
+        bush_left.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
-        self.input_entry2 = self.create_file_selector(bush_card, "📄 BDF File", self.bdf_input)
-        self.output_entry2 = self.create_file_selector(bush_card, "📊 OP2 File", self.op2_input)
+        bush_left_card = self.create_card(bush_left, "📁  Files & Output")
+        bush_left_card.pack(fill="x", padx=0, pady=(0, 15))
+        self.input_entry2 = self.create_file_selector(bush_left_card, "📄 BDF File", self.bdf_input)
+        self.output_entry2 = self.create_file_selector(bush_left_card, "📊 OP2 File", self.op2_input)
+        self.stress_output_entry3 = self.create_file_selector(bush_left_card, "📁 Output Directory", self.output_location)
 
-        elem_label = tk.Label(bush_card, text="🔧 Element IDs", font=("Segoe UI", 10),
-                             bg=self.COLORS['card_bg'], fg=self.COLORS['text'])
-        elem_label.pack(anchor="w", padx=15, pady=(10, 5))
-        self.element_id_entry = tk.Entry(bush_card, font=("Segoe UI", 10),
-                                        bg="#3a3a4a", fg=self.COLORS['text'],
-                                        insertbackground=self.COLORS['accent'],
-                                        relief="flat", bd=0)
-        self.element_id_entry.pack(fill="x", padx=15, pady=(0, 5), ipady=5)
-        self.element_id_entry.insert(0, "ALL  (or: 452,678,890)")
-        self.element_id_entry.bind("<KeyRelease>", lambda e: self.update_bush_ids())
-        tk.Label(bush_card, text="Enter ALL for all elements or comma-separated IDs",
-                 font=("Segoe UI", 8), bg=self.COLORS['card_bg'], fg=self.COLORS['text_light']).pack(anchor="w", padx=15, pady=(0, 10))
+        bush_right = tk.Frame(bush_content, bg=self.COLORS['dark_bg'])
+        bush_right.pack(side="left", fill="both", expand=True)
 
-        self.stress_output_entry3 = self.create_file_selector(bush_card, "📁 Output Directory", self.output_location)
+        bush_prop_label = tk.Label(bush_right, text="📋 Property IDs", font=("Segoe UI", 10, "bold"),
+                                  bg=self.COLORS['dark_bg'], fg=self.COLORS['accent'])
+        bush_prop_label.pack(anchor="w", padx=0, pady=(0, 5))
+        self.bush_property_id_entry = tk.Entry(bush_right, font=("Segoe UI", 10),
+                                              bg="#3a3a4a", fg=self.COLORS['text'],
+                                              insertbackground=self.COLORS['accent'],
+                                              relief="flat", bd=0)
+        self.bush_property_id_entry.pack(fill="x", padx=0, pady=(0, 3), ipady=5)
+        self.bush_property_id_entry.insert(0, "ALL")
+        self.bush_property_id_entry.bind("<KeyRelease>", lambda e: self.update_pshell_ids())
+        tk.Label(bush_right, text="Enter ALL or 123,456,789",
+                 font=("Segoe UI", 8), bg=self.COLORS['dark_bg'], fg=self.COLORS['text_light']).pack(anchor="w", padx=0, pady=(0, 12))
 
-        self.pshell_frame.pack(fill="x")
+        bush_elem_label = tk.Label(bush_right, text="🔧 Element IDs", font=("Segoe UI", 10, "bold"),
+                                  bg=self.COLORS['dark_bg'], fg=self.COLORS['accent'])
+        bush_elem_label.pack(anchor="w", padx=0, pady=(0, 5))
+        self.bush_element_id_entry = tk.Entry(bush_right, font=("Segoe UI", 10),
+                                             bg="#3a3a4a", fg=self.COLORS['text'],
+                                             insertbackground=self.COLORS['accent'],
+                                             relief="flat", bd=0)
+        self.bush_element_id_entry.pack(fill="x", padx=0, pady=(0, 3), ipady=5)
+        self.bush_element_id_entry.insert(0, "ALL")
+        self.bush_element_id_entry.bind("<KeyRelease>", lambda e: self.update_bush_ids())
+        tk.Label(bush_right, text="Enter ALL or 452,678,890",
+                 font=("Segoe UI", 8), bg=self.COLORS['dark_bg'], fg=self.COLORS['text_light']).pack(anchor="w", padx=0, pady=(0, 12))
 
-        content_frame.update_idletasks()
-        scroll.configure(scrollregion=scroll.bbox("all"))
+        bush_lc_label = tk.Label(bush_right, text="⏱️  Load Cases", font=("Segoe UI", 10, "bold"),
+                                bg=self.COLORS['dark_bg'], fg=self.COLORS['accent'])
+        bush_lc_label.pack(anchor="w", padx=0, pady=(0, 5))
+        self.bush_loadcase_id_entry = tk.Entry(bush_right, font=("Segoe UI", 10),
+                                              bg="#3a3a4a", fg=self.COLORS['text'],
+                                              insertbackground=self.COLORS['accent'],
+                                              relief="flat", bd=0)
+        self.bush_loadcase_id_entry.pack(fill="x", padx=0, pady=(0, 3), ipady=5)
+        self.bush_loadcase_id_entry.insert(0, "ALL")
+        self.bush_loadcase_id_entry.bind("<KeyRelease>", lambda e: self.update_load_cases())
+        tk.Label(bush_right, text="Enter ALL or 1,2,3",
+                 font=("Segoe UI", 8), bg=self.COLORS['dark_bg'], fg=self.COLORS['text_light']).pack(anchor="w", padx=0, pady=(0, 12))
+
+        self.pshell_frame.pack(fill="both", expand=True)
 
         # LOG PANEL
-        log_frame = tk.Frame(self.root, bg=self.COLORS['card_bg'], height=140)
-        log_frame.pack(fill="both", expand=False, padx=15, pady=(0, 15))
+        log_frame = tk.Frame(self.root, bg=self.COLORS['card_bg'])
+        log_frame.pack(fill="both", expand=False, padx=15, pady=(0, 10))
         tk.Label(log_frame, text="📋 Process Log", font=("Segoe UI", 11, "bold"),
                  bg=self.COLORS['card_bg'], fg=self.COLORS['accent']).pack(anchor="w", padx=15, pady=(10, 5))
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=6, font=("Courier", 8),
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=4, font=("Courier", 8),
                                          bg="#1a1a2a", fg=self.COLORS['text_light'], insertbackground=self.COLORS['accent'])
         self.log_text.pack(fill="both", expand=True, padx=15, pady=(0, 10))
         self.log_text.config(state=tk.DISABLED)
@@ -342,10 +413,10 @@ class LoadExtractionApp:
         button_frame.pack(fill="x", padx=15, pady=(0, 15))
         tk.Button(button_frame, text="▶  RUN ANALYSIS", command=self.asc_run,
                   bg=self.COLORS['success'], fg="white", font=("Segoe UI", 12, "bold"),
-                  relief="flat", cursor="hand2", padx=30, pady=12).pack(side="left", expand=True, fill="both", padx=(0, 7))
+                  relief="flat", cursor="hand2").pack(side="left", expand=True, fill="both", padx=(0, 7), pady=8, ipady=5)
         tk.Button(button_frame, text="⟳  CLEAR", command=self.clear_log,
                   bg="#666", fg="white", font=("Segoe UI", 11, "bold"),
-                  relief="flat", cursor="hand2", padx=20, pady=12).pack(side="left", expand=True, fill="both")
+                  relief="flat", cursor="hand2").pack(side="left", expand=True, fill="both", pady=8, ipady=5)
 
         self.setup_logger()
         self.on_mode_change()
@@ -399,6 +470,9 @@ class LoadExtractionApp:
 
     def update_bush_ids(self):
         self.bush_element_ids = self.element_id_entry.get().strip()
+
+    def update_load_cases(self):
+        self.load_case_ids = self.loadcase_id_entry.get().strip() if self.extraction_type.get() == "PSHELL ALL AVERAGE" else self.bush_loadcase_id_entry.get().strip()
 
     def asc_run(self):
         self.clear_log()
